@@ -1,0 +1,87 @@
+---
+title: "Web Scraping NBA Data from Basketball Reference"
+author: "Zachary Shelly"
+date: "2022-11-19"
+slug: "web-scraping-nba-data-from-basketball-reference"
+categories: []
+tags: []
+---
+
+```{r setup, warning=FALSE, message=FALSE, echo=FALSE}
+require(tidyverse)
+require(lubridate)
+require(dplyr)
+library(ggplot2)
+library(rvest)
+library(curl)
+library(gtExtras)
+library(stringr)
+library(ggnewscale)
+library(gt)
+```
+
+
+This is the webscraping process.
+```{r}
+url <- paste0("https://www.basketball-reference.com/leagues/NBA_2023_standings.html")
+webpage <- read_html(curl(url, handle = curl::new_handle("useragent" = "just.a.little.project")))
+
+#creating the Eastern Conference Standings table
+col_names <- webpage %>%
+  html_nodes(paste("#confs_standings_E .poptip")) %>% #I got this by using  the selector gadget plugin
+  html_attr("data-stat")
+
+
+data <- webpage %>%
+  html_nodes(paste("#confs_standings_E .full_table .right , #confs_standings_E .full_table .left")) %>% #I got this by using  the selector gadget plugin
+  html_text()
+
+data <- data %>% matrix(ncol = length(col_names), byrow = TRUE)
+eastern_conf_standings <- as.data.frame(data)
+names(eastern_conf_standings) <- col_names
+
+#creating the Western Conference Standings table
+col_names <- webpage %>%
+  html_nodes(paste("#confs_standings_W .poptip")) %>% #I got this by using  the selector gadget plugin
+  html_attr("data-stat")
+
+
+data <- webpage %>%
+  html_nodes(paste("#confs_standings_W .full_table .right , #confs_standings_W .full_table .left")) %>% #I got this by using  the selector gadget plugin
+  html_text()
+
+data <- data %>% matrix(ncol = length(col_names), byrow = TRUE)
+western_conf_standings <- as.data.frame(data)
+names(western_conf_standings) <- col_names
+
+```
+
+This is me trying out the gtExtras package for the first time.
+```{r}
+western_conf_standings %>% gt() %>% gt_theme_nytimes() %>% tab_header(title = "Western Conference")
+```
+```{r}
+eastern_conf_standings %>% gt() %>% gt_theme_nytimes() %>% tab_header(title = "Eastern Conference")
+```
+Making a graph using the standings table
+```{r}
+western_conf_standings$conf <- "West"
+eastern_conf_standings$conf <- "East"
+western_conf_standings$West_win_loss_pct <- as.numeric(western_conf_standings$win_loss_pct)
+eastern_conf_standings$East_win_loss_pct <- as.numeric(eastern_conf_standings$win_loss_pct)
+western_conf_standings$opp_pts_per_g <- as.numeric(western_conf_standings$opp_pts_per_g)
+eastern_conf_standings$opp_pts_per_g <- as.numeric(eastern_conf_standings$opp_pts_per_g)
+western_conf_standings$pts_per_g <- as.numeric(western_conf_standings$pts_per_g)
+eastern_conf_standings$pts_per_g <- as.numeric(eastern_conf_standings$pts_per_g)
+ggplot() +
+  geom_text(data = western_conf_standings, aes(x = pts_per_g, y = opp_pts_per_g, label = regmatches(team_name, gregexpr("(?=\\().*?(?<=\\))", team_name, perl=T)), color = West_win_loss_pct))+
+  ggtitle("League Standings (Team Rank)")+
+  scale_color_gradient2("West_win_loss_pct",low = "#FA8072", high = "#D30000")+
+  new_scale("color")+
+  geom_text(data = eastern_conf_standings, aes(x = pts_per_g, y = opp_pts_per_g, label = regmatches(team_name, gregexpr("(?=\\().*?(?<=\\))", team_name, perl=T)), color = East_win_loss_pct))+
+  scale_color_gradient2("East_win_loss_pct",low = "#29C5F6", high = "#1260CC")+
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  )
+```
